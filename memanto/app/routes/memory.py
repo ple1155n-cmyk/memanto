@@ -478,9 +478,9 @@ async def answer(
             "If no relevant memories exist, acknowledge that."
         )
 
-        # Use Moorcheh's answer.generate endpoint. The REST API does not
-        # apply a server-side default for threshold — it is only forwarded
-        # when the caller explicitly passes one and kiosk_mode is on.
+        # Use Moorcheh's answer.generate endpoint. Threshold is required
+        # when kiosk_mode is on — fall back to 0.15 when the caller did
+        # not specify one.
         generate_kwargs = {
             "namespace": namespace,
             "query": request.question,
@@ -491,8 +491,10 @@ async def answer(
             "header_prompt": header_prompt,
             "footer_prompt": footer_prompt,
         }
-        if request.kiosk_mode and request.threshold is not None:
-            generate_kwargs["threshold"] = request.threshold
+        if request.kiosk_mode:
+            generate_kwargs["threshold"] = (
+                request.threshold if request.threshold is not None else 0.15
+            )
 
         response = await asyncio.to_thread(client.answer.generate, **generate_kwargs)
 

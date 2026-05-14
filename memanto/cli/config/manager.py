@@ -151,7 +151,7 @@ class ConfigManager:
             "model": "anthropic.claude-sonnet-4-6",
             "temperature": 0.7,
             "answer_limit": 15,
-            "threshold": 0.01,
+            "threshold": 0.15,
             "kiosk_mode": False,
         }
         defaults.update(answer)

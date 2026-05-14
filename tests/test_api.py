@@ -277,15 +277,10 @@ class TestMEMANTOAPI:
         assert "threshold" not in call_kwargs
 
     @pytest.mark.asyncio
-    async def test_answer_with_kiosk_mode_omits_threshold_when_not_provided(
+    async def test_answer_with_kiosk_mode_uses_default_threshold(
         self, client, auth_headers, mock_moorcheh
     ):
-        """Kiosk mode without an explicit threshold does NOT forward one.
-
-        The REST API stays simple — it only passes through what the caller
-        sent. Server-side defaults for threshold live in the CLI's
-        config.yaml and are applied by the SDK clients, not by REST.
-        """
+        """Kiosk mode without an explicit threshold falls back to 0.15."""
         await client.post(
             "/api/v2/agents",
             headers=auth_headers,
@@ -305,7 +300,7 @@ class TestMEMANTOAPI:
         assert response.status_code == 200
         call_kwargs = mock_moorcheh.answer.generate.call_args.kwargs
         assert call_kwargs["kiosk_mode"] is True
-        assert "threshold" not in call_kwargs
+        assert call_kwargs["threshold"] == 0.15
 
     @pytest.mark.asyncio
     async def test_answer_with_kiosk_mode_forwards_explicit_threshold(
