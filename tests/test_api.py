@@ -280,7 +280,7 @@ class TestMEMANTOAPI:
     async def test_answer_with_kiosk_mode_uses_default_threshold(
         self, client, auth_headers, mock_moorcheh
     ):
-        """Test kiosk mode applies default threshold when omitted."""
+        """Kiosk mode without an explicit threshold falls back to 0.15."""
         await client.post(
             "/api/v2/agents",
             headers=auth_headers,
@@ -299,7 +299,37 @@ class TestMEMANTOAPI:
 
         assert response.status_code == 200
         call_kwargs = mock_moorcheh.answer.generate.call_args.kwargs
-        assert call_kwargs["threshold"] == 0.10
+        assert call_kwargs["kiosk_mode"] is True
+        assert call_kwargs["threshold"] == 0.15
+
+    @pytest.mark.asyncio
+    async def test_answer_with_kiosk_mode_forwards_explicit_threshold(
+        self, client, auth_headers, mock_moorcheh
+    ):
+        """Kiosk mode + explicit threshold: REST forwards it unchanged."""
+        await client.post(
+            "/api/v2/agents",
+            headers=auth_headers,
+            json={"agent_id": self.TEST_AGENT_ID},
+        )
+        activate_resp = await client.post(
+            f"/api/v2/agents/{self.TEST_AGENT_ID}/activate", headers=auth_headers
+        )
+        token = activate_resp.json()["session_token"]
+
+        headers = {**auth_headers, "X-Session-Token": token}
+        payload = {
+            "question": "What is being tested?",
+            "kiosk_mode": True,
+            "threshold": 0.42,
+        }
+        response = await client.post(
+            f"/api/v2/agents/{self.TEST_AGENT_ID}/answer", headers=headers, json=payload
+        )
+
+        assert response.status_code == 200
+        call_kwargs = mock_moorcheh.answer.generate.call_args.kwargs
+        assert call_kwargs["threshold"] == 0.42
 
     @pytest.mark.asyncio
     async def test_answer_accepts_ai_model_field(

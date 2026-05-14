@@ -36,6 +36,7 @@ from memanto.app.utils.errors import (
     SessionExpiredError,
     SessionNotFoundError,
 )
+from memanto.app.utils.validation import InputLimits
 from memanto.cli.config.manager import ConfigManager
 
 logger = logging.getLogger(__name__)
@@ -211,7 +212,7 @@ __all__ = ["DirectClient"]
 
 _MAX_BATCH_SIZE = 100
 _MAX_TITLE_LENGTH = 100
-_MAX_CONTENT_LENGTH = 500
+_MAX_CONTENT_LENGTH = InputLimits.MAX_TEXT_LENGTH
 
 
 class DirectClient:
@@ -568,10 +569,12 @@ class DirectClient:
 
         Args:
             agent_id: Target agent.
-            memory_type: One of ``fact``, ``decision``, ``instruction``,
-                ``commitment``, ``event``.
+            memory_type: One of ``fact``, ``preference``, ``goal``,
+                ``decision``, ``artifact``, ``learning``, ``event``,
+                ``instruction``, ``relationship``, ``context``,
+                ``observation``, ``commitment``, ``error``.
             title: Memory title (max 100 chars).
-            content: Memory content (max 500 chars).
+            content: Memory content (max ``InputLimits.MAX_TEXT_LENGTH`` chars).
             confidence: Confidence score 0.0–1.0 (default 0.8).
             tags: Optional list of tags.
             source: Memory source (default ``"user"``).
@@ -856,6 +859,41 @@ class DirectClient:
             "count": result.get("total_found", 0),
         }
 
+    def recall_recent(
+        self,
+        agent_id: str,
+        limit: int | None = None,
+        type: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Recall the most recently stored memories (newest first).
+
+        Args:
+            agent_id: Target agent.
+            limit: Max results (defaults to config).
+            type: Optional type filter.
+
+        Returns:
+            Dict with ``memories`` and ``count``.
+        """
+        if limit is None:
+            limit = ConfigManager().get_recall_config()["limit"]
+
+        # Ensure there is a valid, non-expired session for this agent
+        self._get_validated_session_for_agent(agent_id)
+
+        result = self._get_read_service().search_recent(
+            agent_id=agent_id,
+            type=type,
+            limit=limit,
+        )
+
+        return {
+            "agent_id": agent_id,
+            "memories": result.get("results", []),
+            "count": result.get("total_found", 0),
+        }
+
     def answer(
         self,
         agent_id: str,
@@ -864,7 +902,7 @@ class DirectClient:
         threshold: float | None = None,
         temperature: float | None = None,
         ai_model: str | None = None,
-        kiosk_mode: bool = False,
+        kiosk_mode: bool | None = None,
         header_prompt: str | None = None,
         footer_prompt: str | None = None,
     ) -> dict[str, Any]:
@@ -878,10 +916,13 @@ class DirectClient:
             agent_id: Target agent.
             question: Natural-language question.
             limit: Number of memories to use as context (defaults to config).
-            threshold: Confidence threshold for memory relevance (defaults to config).
+            threshold: Similarity threshold. Only honored when
+                ``kiosk_mode`` is True. Defaults to the config value when
+                unset.
             temperature: Temperature for the LLM response (defaults to config).
             ai_model: AI model to use for generating the answer (defaults to config).
-            kiosk_mode: When true, filters out low-relevance results; requires threshold.
+            kiosk_mode: When True, filters out low-relevance results using
+                ``threshold``. When None (default), reads the config value.
             header_prompt: Header prompt for the LLM.
             footer_prompt: Footer prompt for the LLM.
 
@@ -892,12 +933,16 @@ class DirectClient:
         ans_cfg = ConfigManager().get_answer_config()
         if limit is None:
             limit = ans_cfg["answer_limit"]
-        if threshold is None:
-            threshold = ans_cfg["threshold"]
         if temperature is None:
             temperature = ans_cfg["temperature"]
         if ai_model is None:
             ai_model = ans_cfg["model"]
+        if kiosk_mode is None:
+            kiosk_mode = bool(ans_cfg.get("kiosk_mode", False))
+        # Threshold is only meaningful in kiosk_mode; only fall back to the
+        # config value when the caller has actually turned kiosk_mode on.
+        if kiosk_mode and threshold is None:
+            threshold = ans_cfg["threshold"]
 
         # Ensure there is a valid, non-expired session for this agent
         session = self._get_validated_session_for_agent(agent_id)
