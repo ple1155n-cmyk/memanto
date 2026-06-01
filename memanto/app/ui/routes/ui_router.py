@@ -431,12 +431,19 @@ def get_ui_router():
 def mount_ui_static(app):
     """Mount the static files directory for serving the UI SPA."""
     if STATIC_DIR.exists():
-        # Serve index.html for the /ui root
+        # Serve index.html for the /ui root. No-store so the browser always
+        # picks up the latest UI without a hard refresh after upgrades.
         @app.get("/ui", response_class=HTMLResponse, include_in_schema=False)
         async def serve_ui():
             index_path = STATIC_DIR / "index.html"
             if index_path.exists():
-                return FileResponse(index_path)
+                return FileResponse(
+                    index_path,
+                    headers={
+                        "Cache-Control": "no-store, no-cache, must-revalidate",
+                        "Pragma": "no-cache",
+                    },
+                )
             raise HTTPException(status_code=404, detail="UI not found")
 
         # Mount static assets (CSS, JS, images) under /ui/static

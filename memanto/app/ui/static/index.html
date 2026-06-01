@@ -2703,37 +2703,40 @@
         // CONNECTIONS
         // ================================================================
 
-        // Maps each agent to a Simple Icons CDN URL (https://simpleicons.org)
-        // when an official mark exists, otherwise a colored letter avatar.
-        // The CDN format is https://cdn.simpleicons.org/<slug>/<hex>.
+        // Each agent maps to a primary icon URL plus an automatic chain of
+        // fallbacks (DuckDuckGo favicons, then a letter avatar) that the
+        // helper wires up via the <img> onerror chain. Simple Icons covers
+        // the popular tools cleanly as monochrome vector marks; DDG favicons
+        // fill the gap for everything else with the real brand mark.
         const AGENT_LOGOS = {
-            'claude-code':    { src: 'https://cdn.simpleicons.org/claude/d97757', bg: '#1a0f0a' },
-            'codex':          { src: 'https://cdn.simpleicons.org/openai/ffffff', bg: '#0a0a0a' },
-            'cursor':         { src: 'https://cdn.simpleicons.org/cursor/ffffff', bg: '#0a0a0a' },
-            'windsurf':       { src: 'https://cdn.simpleicons.org/windsurf/24a5da', bg: '#0a1218' },
-            'antigravity':    { src: 'https://cdn.simpleicons.org/google/4285f4', bg: '#0a1124' },
-            'gemini-cli':     { src: 'https://cdn.simpleicons.org/googlegemini/8e75b2', bg: '#16101e' },
-            'cline':          { letter: 'C', bg: '#06b6d4' },
-            'continue':       { letter: 'C', bg: '#22c55e' },
-            'opencode':       { letter: 'O', bg: '#f59e0b' },
-            'goose':          { letter: 'G', bg: '#ec4899' },
-            'roo':            { letter: 'R', bg: '#8b5cf6' },
-            'github-copilot': { src: 'https://cdn.simpleicons.org/githubcopilot/ffffff', bg: '#0a0a0a' },
-            'augment':        { letter: 'A', bg: '#6366f1' },
+            'claude-code':    { src: 'https://cdn.simpleicons.org/claude/d97757',          fallback: 'https://icons.duckduckgo.com/ip3/claude.ai.ico',           bg: '#1a0f0a', letter: 'C' },
+            'codex':          { src: 'https://icons.duckduckgo.com/ip3/chatgpt.com.ico',   fallback: 'https://icons.duckduckgo.com/ip3/openai.com.ico',         bg: '#FFFFFF', letter: 'C' },
+            'cursor':         { src: 'https://cdn.simpleicons.org/cursor/ffffff',          fallback: 'https://icons.duckduckgo.com/ip3/cursor.com.ico',         bg: '#0a0a0a', letter: 'C' },
+            'windsurf':       { src: 'https://cdn.simpleicons.org/windsurf/24a5da',        fallback: 'https://icons.duckduckgo.com/ip3/codeium.com.ico',        bg: '#0a1218', letter: 'W' },
+            'antigravity':    { src: 'https://icons.duckduckgo.com/ip3/google.com.ico',    fallback: null,                                                      bg: '#1a2230', letter: 'A' },
+            'gemini-cli':     { src: 'https://cdn.simpleicons.org/googlegemini/8e75b2',    fallback: 'https://icons.duckduckgo.com/ip3/gemini.google.com.ico',  bg: '#FFFFFF', letter: 'G' },
+            'cline':          { src: 'https://cdn.simpleicons.org/cline/06b6d4',           fallback: 'https://icons.duckduckgo.com/ip3/cline.bot.ico',          bg: '#0a1216', letter: 'C' },
+            'continue':       { src: 'https://icons.duckduckgo.com/ip3/continue.dev.ico',  fallback: null,                                                      bg: '#0a0a0a', letter: 'C' },
+            'opencode':       { src: 'https://icons.duckduckgo.com/ip3/opencode.ai.ico',   fallback: null,                                                      bg: '#0a0a0a', letter: 'O' },
+            'goose':          { src: 'https://icons.duckduckgo.com/ip3/goose-docs.ai.ico',     fallback: 'https://icons.duckduckgo.com/ip3/block.github.io.ico',    bg: '#FFFFFF', letter: 'G' },
+            'roo':            { src: 'https://icons.duckduckgo.com/ip3/roocode.com.ico',   fallback: null,                                                      bg: '#FFFFFF', letter: 'R' },
+            'github-copilot': { src: 'https://cdn.simpleicons.org/githubcopilot/ffffff',   fallback: 'https://icons.duckduckgo.com/ip3/github.com.ico',         bg: '#0a0a0a', letter: 'G' },
+            'augment':        { src: 'https://icons.duckduckgo.com/ip3/augmentcode.com.ico', fallback: null,                                                    bg: '#FFFFFF', letter: 'A' },
         };
 
         function agentLogo(name, large = false) {
             const meta = AGENT_LOGOS[name] || { letter: (name[0] || '?').toUpperCase(), bg: '#55556a' };
             const sizeClass = large ? ' large' : '';
             const bg = meta.bg ? `background:${meta.bg};border-color:transparent` : '';
+            const letter = (meta.letter || (name[0] || '?').toUpperCase());
             if (meta.src) {
-                // Fall back to a letter avatar if the CDN image fails to load.
-                const letter = (name[0] || '?').toUpperCase();
-                return `<span class="agent-logo${sizeClass}" style="${bg}">
-                    <img src="${meta.src}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'agent-letter',textContent:'${letter}'}))">
-                </span>`;
+                // Onerror chain: primary src → fallback src → letter avatar.
+                // Inline JS keeps state via dataset.fallbackUsed.
+                const fallback = meta.fallback || '';
+                const onerr = `if(!this.dataset.fb && '${fallback}'){this.dataset.fb=1; this.src='${fallback}'} else {this.outerHTML='<span class=&quot;agent-letter&quot;>${letter}</span>'}`;
+                return `<span class="agent-logo${sizeClass}" style="${bg}"><img src="${meta.src}" alt="" loading="lazy" onerror="${onerr}"></span>`;
             }
-            return `<span class="agent-logo${sizeClass}" style="${bg}"><span class="agent-letter">${meta.letter}</span></span>`;
+            return `<span class="agent-logo${sizeClass}" style="${bg}"><span class="agent-letter">${letter}</span></span>`;
         }
 
         async function loadConnections() {
@@ -2896,7 +2899,7 @@
                 </div>
                 <div class="form-group">
                     <label>Project Directory</label>
-                    <input id="connectPathInput" type="text" placeholder="${escHtml(placeholder)}" value="${escHtml(placeholder)}"
+                    <input id="connectPathInput" type="text" placeholder="${attrEsc(placeholder)}" value="${attrEsc(placeholder)}"
                         onkeydown="if(event.key==='Enter'){event.preventDefault(); browseTo(this.value)}">
                     <div class="helper-text">Type or paste a path, or use the browser below. Hit Enter to navigate there.</div>
                     <div id="folderBrowser" class="browser">
@@ -2929,6 +2932,13 @@
         }
 
         // Folder browser inside the connect modal — server-side via /api/ui/browse.
+        // All path-bearing controls use data-browse-path attrs + event delegation
+        // so Windows backslashes are not mangled by inline-onclick JS parsing.
+        function attrEsc(s) {
+            if (s == null) return '';
+            return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
         async function browseTo(path) {
             const box = document.getElementById('folderBrowser');
             if (!box) return;
@@ -2936,50 +2946,59 @@
             try {
                 const qs = path ? ('?path=' + encodeURIComponent(path)) : '';
                 const data = await api('GET', '/api/ui/browse' + qs);
-                document.getElementById('connectPathInput').value = data.path;
+                const input = document.getElementById('connectPathInput');
+                if (input) input.value = data.path || '';
                 renderBrowser(data);
             } catch (e) {
-                box.innerHTML = `<div class="browser-list-empty">Failed to browse: ${escHtml(e.message)}</div>`;
+                console.error('browseTo failed:', e);
+                box.innerHTML = `<div class="browser-list-empty">Failed to browse: ${escHtml(e && e.message ? e.message : String(e))}</div>`;
             }
         }
 
         function renderBrowser(data) {
             const box = document.getElementById('folderBrowser');
-            const sep = (navigator.userAgent.includes('Windows') || data.path.includes('\\')) ? '\\' : '/';
-            const parts = data.path.split(/[\\/]+/).filter(Boolean);
-            // Reconstruct cumulative paths for each crumb so clicking jumps to that level.
-            let acc = data.path.startsWith('/') ? '/' : '';
-            const crumbs = parts.map((p, i) => {
-                acc = (i === 0 && !data.path.startsWith('/')) ? p + sep : (acc.endsWith(sep) ? acc + p : acc + sep + p);
-                const safe = acc.replace(/'/g, "\\'");
-                return `<a class="browser-crumb" onclick="browseTo('${escHtml(safe)}')">${escHtml(p)}</a>`;
-            }).join(`<span class="browser-crumb-sep">${sep}</span>`);
+            if (!box) return;
+            const path = data.path || '';
+            const sep = path.includes('\\') ? '\\' : '/';
+            const isWin = sep === '\\';
+            const parts = path.split(/[\\\/]+/).filter(Boolean);
+
+            // Build cumulative path per crumb so clicking jumps to that level.
+            let acc = isWin ? '' : '/';
+            const crumbHtml = parts.map((p, i) => {
+                if (i === 0 && isWin) acc = p + sep;
+                else if (acc.endsWith(sep)) acc = acc + p;
+                else acc = acc + sep + p;
+                return `<a class="browser-crumb" data-browse-path="${attrEsc(acc)}">${escHtml(p)}</a>`;
+            }).join(`<span class="browser-crumb-sep">${escHtml(sep)}</span>`);
 
             const quickHtml = (data.quick_paths || []).map(q =>
-                `<button class="browser-quick-btn" onclick="browseTo('${escHtml(q.path.replace(/'/g, "\\'"))}')">${escHtml(q.label)}</button>`
+                `<button class="browser-quick-btn" data-browse-path="${attrEsc(q.path)}">${escHtml(q.label)}</button>`
             ).join('');
 
-            const upDisabled = data.parent ? '' : 'disabled';
-            const upPath = data.parent ? data.parent.replace(/'/g, "\\'") : '';
+            const upHtml = data.parent
+                ? `<button class="browser-up" data-browse-path="${attrEsc(data.parent)}">↑ Up</button>`
+                : `<button class="browser-up" disabled>↑ Up</button>`;
 
-            const list = data.children && data.children.length
-                ? data.children.map(c => {
-                    const safe = c.path.replace(/'/g, "\\'");
-                    return `<div class="browser-list-item" onclick="browseTo('${escHtml(safe)}')">
+            const list = (data.children && data.children.length)
+                ? data.children.map(c =>
+                    `<div class="browser-list-item" data-browse-path="${attrEsc(c.path)}">
                         <span class="folder-ico">📁</span>
                         <span>${escHtml(c.name)}</span>
-                    </div>`;
-                }).join('')
+                    </div>`
+                ).join('')
                 : '<div class="browser-list-empty">No subfolders here</div>';
 
             box.innerHTML = `
-                <div class="browser-toolbar">
-                    <button class="browser-up" ${upDisabled} onclick="browseTo('${escHtml(upPath)}')">↑ Up</button>
-                    <div class="browser-quick">${quickHtml}</div>
-                </div>
-                <div class="browser-crumbs">${crumbs || '<span style="color:var(--text-dim)">(root)</span>'}</div>
+                <div class="browser-toolbar">${upHtml}<div class="browser-quick">${quickHtml}</div></div>
+                <div class="browser-crumbs">${crumbHtml || '<span style="color:var(--text-dim)">(root)</span>'}</div>
                 <div class="browser-list">${list}</div>
             `;
+
+            // Attach handlers via delegation — paths come from dataset (safe).
+            box.querySelectorAll('[data-browse-path]').forEach(el => {
+                el.addEventListener('click', () => browseTo(el.dataset.browsePath));
+            });
         }
 
         function openConnectModalGlobal(agentName) {
