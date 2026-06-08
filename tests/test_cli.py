@@ -461,6 +461,7 @@ class TestMEMANTOCLI:
         assert result.exit_code == 0
         assert "supermemory" in result.stdout.lower()
         assert "mem0" in result.stdout.lower()
+        assert "letta" in result.stdout.lower()
 
     def test_analyze_supermemory_export(self, mock_all_clients, tmp_path):
         """Test 'memanto analyze supermemory' end-to-end with mocked export + LLM."""
@@ -571,6 +572,116 @@ class TestMEMANTOCLI:
         assert "Memanto vs. Mem0" in report_text
         assert "Executive summary" in report_text
         assert "Method & assumptions" in report_text
+
+    def test_analyze_letta_export(self, mock_all_clients, tmp_path):
+        """Test 'memanto analyze letta' end-to-end with mocked export + LLM."""
+        export = {
+            "exported_at": "2026-06-04T00:00:00Z",
+            "export_mode": "all_agents",
+            "summary": {
+                "agent_count": 2,
+                "passage_count": 2,
+                "passage_pages": 2,
+            },
+            "agents": [
+                {"id": "agent-test-123", "name": "lette"},
+                {"id": "agent-test-456", "name": "support-bot"},
+            ],
+            "passages": [
+                {"id": "p1", "text": "User prefers dark mode"},
+                {"id": "p2", "text": "Timezone is PST"},
+            ],
+        }
+        export_file = tmp_path / "letta_export.json"
+
+        mock_all_clients.answer.return_value = {
+            "answer": "## Executive summary\nMigrating from Letta saves tokens.",
+        }
+
+        with (
+            patch("memanto.cli.commands.analyze.config_manager") as mock_cfg,
+            patch(
+                "memanto.cli.commands.analyze.run_letta_export",
+                return_value=(export_file, export),
+            ) as mock_export,
+        ):
+            mock_cfg.get_letta_api_key.return_value = "let_test_key"
+            mock_cfg.get_analyze_dir.return_value = tmp_path
+            mock_cfg.get_active_session.return_value = ("test-agent", "test-token")
+            mock_cfg.get_answer_config.return_value = {
+                "model": "anthropic.claude-sonnet-4-6"
+            }
+
+            result = runner.invoke(
+                app,
+                ["analyze", "letta", "--api-key", "let_test_key"],
+            )
+
+        assert result.exit_code == 0, result.stdout
+        assert "Analysis complete" in result.stdout
+        mock_export.assert_called_once()
+        mock_cfg.set_letta_api_key.assert_called_with("let_test_key")
+        assert mock_export.call_args[0][0] == "let_test_key"
+
+        reports = list(tmp_path.glob("*/analyze-report.md"))
+        assert len(reports) == 1
+        report_text = reports[0].read_text(encoding="utf-8")
+        assert "Memanto vs. Letta" in report_text
+        assert "Executive summary" in report_text
+        assert "Method & assumptions" in report_text
+
+    def test_analyze_narrative_retries_on_invalid_session(
+        self, mock_all_clients, tmp_path
+    ):
+        """Analyze re-activates the agent when the Moorcheh session token is invalid."""
+        from memanto.app.utils.errors import InvalidSessionTokenError
+
+        export = {
+            "exported_at": "2026-06-04T00:00:00Z",
+            "export_mode": "all_agents",
+            "summary": {"agent_count": 1, "passage_count": 1},
+            "agents": [{"id": "agent-1", "name": "lette"}],
+            "passages": [{"id": "p1", "text": "hello"}],
+        }
+        export_file = tmp_path / "letta_export.json"
+
+        mock_all_clients.answer.side_effect = [
+            InvalidSessionTokenError(
+                "Invalid session token: Signature verification failed"
+            ),
+            {"answer": "## Executive summary\nRecovered after re-activation."},
+        ]
+        mock_all_clients.activate_agent.return_value = {
+            "agent_id": "test-agent",
+            "session_token": "new-token",
+        }
+
+        with (
+            patch("memanto.cli.commands.analyze.config_manager") as mock_cfg,
+            patch(
+                "memanto.cli.commands.analyze.run_letta_export",
+                return_value=(export_file, export),
+            ),
+        ):
+            mock_cfg.get_letta_api_key.return_value = "let_test_key"
+            mock_cfg.get_analyze_dir.return_value = tmp_path
+            mock_cfg.get_active_session.return_value = ("test-agent", "stale-token")
+            mock_cfg.get_answer_config.return_value = {
+                "model": "anthropic.claude-sonnet-4-6"
+            }
+
+            result = runner.invoke(
+                app,
+                ["analyze", "letta", "--api-key", "let_test_key"],
+            )
+
+        assert result.exit_code == 0, result.stdout
+        mock_all_clients.activate_agent.assert_called_once_with("test-agent")
+        assert mock_all_clients.answer.call_count == 2
+
+        reports = list(tmp_path.glob("*/analyze-report.md"))
+        report_text = reports[0].read_text(encoding="utf-8")
+        assert "Recovered after re-activation." in report_text
 
 
 if __name__ == "__main__":
