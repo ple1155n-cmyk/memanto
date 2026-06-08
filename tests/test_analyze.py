@@ -2,13 +2,22 @@
 Unit tests for memanto analyze pipeline (no API keys or network).
 
 Covers deterministic metrics, ingestion cost math, LLM prompts, and report
-markdown builders for Supermemory and Mem0 exports.
+markdown builders for Supermemory, Mem0, and Letta exports.
 """
 
 from memanto.cli.analyze.ingestion_cost import (
     DEFAULT_INPUT_USD_PER_1M,
     DEFAULT_OUTPUT_USD_PER_1M,
     estimate_ingestion_cost,
+)
+from memanto.cli.analyze.letta_compare import (
+    build_llm_prompt as build_letta_llm_prompt,
+)
+from memanto.cli.analyze.letta_compare import (
+    build_report_markdown as build_letta_report,
+)
+from memanto.cli.analyze.letta_compare import (
+    compute_metrics as compute_letta_metrics,
 )
 from memanto.cli.analyze.mem0_compare import (
     build_llm_prompt as build_mem0_llm_prompt,
@@ -225,3 +234,102 @@ class TestMem0Compare:
         assert "agent: 1, user: 1" in report
         assert "Mem0 migration brief." in report
         assert "Method & assumptions" in report
+
+
+class TestLettaCompare:
+    @staticmethod
+    def _sample_export() -> dict:
+        return {
+            "exported_at": "2026-06-04T12:00:00Z",
+            "export_mode": "all_agents",
+            "summary": {
+                "agent_count": 2,
+                "passage_count": 2,
+                "passage_pages": 2,
+            },
+            "agents": [
+                {"id": "agent-test-123", "name": "lette"},
+                {"id": "agent-test-456", "name": "support-bot"},
+            ],
+            "passages": [
+                {
+                    "id": "p1",
+                    "text": "a" * 40,
+                    "export_agent_id": "agent-test-123",
+                    "export_agent_name": "lette",
+                },
+                {
+                    "id": "p2",
+                    "text": "b" * 40,
+                    "export_agent_id": "agent-test-456",
+                    "export_agent_name": "support-bot",
+                },
+            ],
+        }
+
+    def test_compute_metrics(self):
+        metrics = compute_letta_metrics(self._sample_export())
+        volume = metrics["volume"]
+
+        assert volume["agents"] == 2
+        assert volume["passages"] == 2
+        assert volume["estimated_content_tokens"] == 20
+        assert volume["estimated_output_tokens"] == 20
+        assert volume["estimated_input_tokens"] == 50
+        assert volume["vector_count"] == 2
+
+        ingestion = metrics["ingestion_tax"]
+        assert ingestion["letta_input_tokens"] == 50
+        assert ingestion["letta_output_tokens"] == 20
+        assert ingestion["tokens_saved"] == 70
+
+        storage = metrics["storage"]
+        assert storage["letta_bytes"] == 2 * 4096
+        assert storage["memanto_bytes"] == 2 * 128
+
+        latency = metrics["latency"]
+        assert latency["letta_read_ms"] == 450
+        assert latency["speedup_x"] == 5.0
+        assert latency["ms_saved_per_query"] == 360
+
+    def test_build_llm_prompt_uses_measured_numbers(self):
+        metrics = compute_letta_metrics(self._sample_export())
+        prompt = build_letta_llm_prompt(metrics)
+
+        assert "MEASURED LETTA FOOTPRINT" in prompt
+        assert "Agents: 2" in prompt
+        assert "Archival passages: 2" in prompt
+        assert "Estimated content tokens: 20" in prompt
+        assert "PROJECTED MEMANTO IMPACT" in prompt
+        assert "Migration considerations" in prompt
+
+    def test_build_report_markdown(self):
+        metrics = compute_letta_metrics(self._sample_export())
+        report = build_letta_report(
+            metrics=metrics,
+            narrative="## Executive summary\nLetta migration brief.",
+            export_path="/tmp/letta_export.json",
+            llm_model="test-model",
+            llm_method="Moorcheh answer (kiosk)",
+            exported_at="2026-06-04T12:00:00Z",
+        )
+
+        assert "# Memanto vs. Letta" in report
+        assert "Your Letta footprint (measured)" in report
+        assert "| Agents | 2 |" in report
+        assert "| Archival passages | 2 |" in report
+        assert "Letta migration brief." in report
+        assert "Method & assumptions" in report
+
+    def test_compute_metrics_single_agent_legacy_export(self):
+        """Older single-agent exports still produce metrics."""
+        export = {
+            "exported_at": "2026-06-04T12:00:00Z",
+            "agent_id": "agent-test-123",
+            "agent_name": "lette",
+            "summary": {"passage_count": 1},
+            "passages": [{"id": "p1", "text": "a" * 40}],
+        }
+        metrics = compute_letta_metrics(export)
+        assert metrics["volume"]["agents"] == 1
+        assert metrics["volume"]["passages"] == 1

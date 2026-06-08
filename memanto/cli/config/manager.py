@@ -96,6 +96,21 @@ class ConfigManager:
         """Save Mem0 API key to ~/.memanto/.env."""
         self._set_env_var("MEM0_API_KEY", _normalize_duplicated_api_key(api_key))
 
+    def get_letta_api_key(self) -> str | None:
+        """Get Letta API key from ~/.memanto/.env."""
+        if self.env_file.exists():
+            load_dotenv(self.env_file, override=True)
+        key = (
+            os.environ.get("LETTA_API_KEY") or os.environ.get("letta_api_key") or ""
+        ).strip()
+        if not key:
+            return None
+        return _normalize_duplicated_api_key(key)
+
+    def set_letta_api_key(self, api_key: str) -> None:
+        """Save Letta API key to ~/.memanto/.env."""
+        self._set_env_var("LETTA_API_KEY", _normalize_duplicated_api_key(api_key))
+
     def _set_env_var(self, name: str, value: str) -> None:
         """Write a single variable to ~/.memanto/.env and update os.environ."""
         if not self.env_file.exists():
