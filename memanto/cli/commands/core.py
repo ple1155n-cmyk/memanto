@@ -170,7 +170,9 @@ def _onprem_setup() -> None:
             f"{embedding_provider} / {embedding_model}[/dim]"
         )
     else:
-        embedding_provider, embedding_model, embedding_key = _prompt_embedding_provider()
+        embedding_provider, embedding_model, embedding_key = (
+            _prompt_embedding_provider()
+        )
     llm_provider, llm_model, llm_key = _prompt_llm_provider(
         embedding_provider, embedding_key
     )

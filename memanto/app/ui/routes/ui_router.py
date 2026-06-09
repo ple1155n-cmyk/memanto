@@ -131,9 +131,7 @@ async def update_ui_config(updates: dict):
         else:
             _config_manager.set_answer_config(
                 model=ans.get("model"),
-                temperature=float(ans["temperature"])
-                if "temperature" in ans
-                else None,
+                temperature=float(ans["temperature"]) if "temperature" in ans else None,
                 answer_limit=int(ans["answer_limit"])
                 if "answer_limit" in ans
                 else None,
@@ -182,9 +180,7 @@ def _update_onprem_answer(ans: dict) -> None:
     api_key = (ans.get("api_key") or "").strip()
 
     if not provider or not model:
-        raise HTTPException(
-            status_code=400, detail="Provider and model are required."
-        )
+        raise HTTPException(status_code=400, detail="Provider and model are required.")
     if provider not in _ONPREM_LLM_PROVIDERS:
         raise HTTPException(
             status_code=400,
@@ -254,9 +250,7 @@ async def restart_onprem_backend():
     import httpx as _httpx
 
     if _config_manager.get_backend() != Backend.ON_PREM:
-        raise HTTPException(
-            status_code=400, detail="Active backend is not on-prem."
-        )
+        raise HTTPException(status_code=400, detail="Active backend is not on-prem.")
 
     from memanto.cli.commands.core import _recover_moorcheh_api_key
 
@@ -281,9 +275,7 @@ async def restart_onprem_backend():
             check=False,
         )
     except FileNotFoundError:
-        raise HTTPException(
-            status_code=500, detail="`moorcheh` CLI not found on PATH."
-        )
+        raise HTTPException(status_code=500, detail="`moorcheh` CLI not found on PATH.")
     except subprocess.TimeoutExpired:
         raise HTTPException(
             status_code=500, detail="`moorcheh down` timed out after 60s."
@@ -302,17 +294,13 @@ async def restart_onprem_backend():
     try:
         subprocess.run(up_args, check=True, timeout=300)
     except subprocess.CalledProcessError as e:
-        raise HTTPException(
-            status_code=500, detail=f"`moorcheh up` failed: {e}"
-        )
+        raise HTTPException(status_code=500, detail=f"`moorcheh up` failed: {e}")
     except subprocess.TimeoutExpired:
         raise HTTPException(
             status_code=500, detail="`moorcheh up` timed out after 5 minutes."
         )
 
-    health_url = (
-        state.get("url") or "http://localhost:8080"
-    ).rstrip("/") + "/health"
+    health_url = (state.get("url") or "http://localhost:8080").rstrip("/") + "/health"
     deadline = time.time() + 60
     while time.time() < deadline:
         try:
