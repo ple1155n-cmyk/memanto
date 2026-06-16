@@ -264,10 +264,19 @@ class DirectClient:
     # Lazy initializers
 
     def _get_moorcheh(self):
-        """Return (or create) the ``MoorchehClient`` singleton."""
+        """Return (or create) the backend-aware Moorcheh client.
+
+        Dispatches to cloud ``MoorchehClient`` or on-prem ``OnPremClient`` based
+        on the active backend, mirroring ``SdkClient._get_moorcheh``. Without
+        this, on-prem callers (e.g. UI ``batch_remember`` for migrate) hit
+        cloud and get a "namespace not found" 404 for agents that only exist
+        locally.
+        """
         if self._moorcheh is None:
-            logger.debug("Initializing MoorchehClient")
-            self._moorcheh = MoorchehClient(api_key=self.api_key)
+            from memanto.app.clients.moorcheh import get_moorcheh_client
+
+            logger.debug("Initializing Moorcheh client via backend dispatcher")
+            self._moorcheh = get_moorcheh_client()
         return self._moorcheh
 
     def _get_write_service(self):
@@ -686,18 +695,34 @@ class DirectClient:
             )
             raw_type = item.get("type")
 
-            memory = MemoryRecord(
-                type=raw_type,
-                title=title,
-                content=raw_content,
-                scope_type="agent",
-                scope_id=agent_id,
-                actor_id=agent_id,
-                confidence=item.get("confidence", 0.8),
-                tags=item.get("tags", []),
-                source="user",
-                provenance="explicit_statement",
-            )
+            # Optional per-item overrides for the migrate flow — keep source
+            # provenance, original ids, and source-side timestamps. Defaults
+            # preserve the original single-user-write behavior.
+            provenance = item.get("provenance") or "explicit_statement"
+            if provenance not in _VALID_PROVENANCE:
+                raise ValueError(
+                    f"Invalid provenance '{provenance}' at index {i}. "
+                    f"Must be one of: {', '.join(sorted(_VALID_PROVENANCE))}"
+                )
+
+            kwargs: dict[str, Any] = {
+                "type": raw_type,
+                "title": title,
+                "content": raw_content,
+                "scope_type": "agent",
+                "scope_id": agent_id,
+                "actor_id": agent_id,
+                "confidence": item.get("confidence", 0.8),
+                "tags": item.get("tags", []),
+                "source": item.get("source") or "user",
+                "provenance": provenance,
+            }
+            for opt_key in ("source_ref", "created_at", "updated_at"):
+                val = item.get(opt_key)
+                if val is not None:
+                    kwargs[opt_key] = val
+
+            memory = MemoryRecord(**kwargs)
             memory_records.append(memory)
 
         logger.debug(
