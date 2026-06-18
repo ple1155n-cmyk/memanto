@@ -1,6 +1,6 @@
 <p align="center">
     <a href="https://www.memanto.ai/">
-    <img alt="MEMANTO Logo" src="https://github.com/moorcheh-ai/memanto/raw/main/assets/memanto-dark.svg" width="500">
+    <img alt="MEMANTO Logo" src="https://github.com/moorcheh-ai/memanto/raw/main/assets/memanto.svg" width="500">
     </a>
 </p>
 
