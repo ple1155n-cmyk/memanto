@@ -485,15 +485,15 @@ def _pull_ollama_model(model: str) -> None:
         try:
             pull_ollama_model_http(model)
         except Exception as e:
-            _error(f"Failed to pull Ollama embedding model: {e}")
-        console.print("[green]  ✓ Embedding model ready[/green]")
+            _error(f"Failed to pull Ollama model {model}: {e}")
+        console.print(f"[green]  ✓ Ollama model {model} ready[/green]")
         return
 
     _pull_ollama_model_in_container(model)
 
 
 def _pull_ollama_model_in_container(model: str) -> None:
-    """Pull the embedding model inside the bundled Ollama container via
+    """Pull an Ollama model inside the bundled Ollama container via
     ``docker exec`` (fallback when the host HTTP API is not reachable).
 
     Looks for a running container with image ``ollama/ollama``; falls back to
@@ -527,8 +527,8 @@ def _pull_ollama_model_in_container(model: str) -> None:
     try:
         subprocess.check_call(["docker", "exec", container_id, "ollama", "pull", model])
     except subprocess.CalledProcessError as e:
-        _error(f"Failed to pull embedding model inside container: {e}")
-    console.print("[green]  ✓ Embedding model ready in container[/green]")
+        _error(f"Failed to pull model {model} inside container: {e}")
+    console.print(f"[green]  ✓ Ollama model {model} ready in container[/green]")
 
 
 def _moorcheh_up_and_wait(provider: str, model: str, key: str) -> None:
