@@ -51,6 +51,7 @@ class DailyAnalysisService:
         Generate a daily natural language summary for an agent and date.
         """
         validate_safe_id(agent_id, "agent_id")
+        validate_safe_id(date, "date")
         # Find all relevant session MD files
         pattern = f"{agent_id}_{date}_*_summary.md"
         session_files = list(self.sessions_dir.glob(pattern))
@@ -144,6 +145,7 @@ Format the output as a Markdown report:
         conflicts_dir.mkdir(parents=True, exist_ok=True)
 
         validate_safe_id(agent_id, "agent_id")
+        validate_safe_id(date, "date")
         pattern = f"{agent_id}_{date}_*_summary.md"
         session_files = list(self.sessions_dir.glob(pattern))
 
