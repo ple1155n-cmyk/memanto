@@ -1227,6 +1227,49 @@ class TestCWE200ApiKeyLeak:
         assert resp.status_code == 400
 
     @pytest.mark.asyncio
+    async def test_daily_summary_rejects_newline_suffixed_agent_id(
+        self, client, tmp_path, _mock_ui_config_manager
+    ):
+        data_dir = tmp_path / "data"
+        (data_dir / "summaries").mkdir(parents=True)
+
+        with patch("memanto.app.config.get_data_dir", return_value=data_dir):
+            resp = await client.get(
+                "/api/ui/daily-summary",
+                params={"agent_id": "agent-1\n", "date": "2026-06-27"},
+            )
+
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_generate_daily_summary_ignores_client_output_path(
+        self, client, _mock_ui_config_manager
+    ):
+        mock_direct_client = MagicMock()
+        mock_direct_client.generate_daily_summary.return_value = {
+            "output_path": "/tmp/memanto/summaries/agent-1_2026-06-27.md",
+            "total_memories": 0,
+        }
+
+        with patch(
+            "memanto.app.ui.routes.ui_router._build_ui_direct_client",
+            return_value=mock_direct_client,
+        ):
+            resp = await client.post(
+                "/api/ui/daily-summary",
+                json={
+                    "agent_id": "agent-1",
+                    "date": "2026-06-27",
+                    "output_path": "../../outside.md",
+                },
+            )
+
+        assert resp.status_code == 200
+        mock_direct_client.generate_daily_summary.assert_called_once_with(
+            agent_id="agent-1", date="2026-06-27", output_path=None
+        )
+
+    @pytest.mark.asyncio
     async def test_traversal_filename_is_sanitized(
         self, client, auth_headers, mock_moorcheh
     ):

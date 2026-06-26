@@ -34,7 +34,7 @@ _SAFE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _validate_summary_key(agent_id: str, date: str) -> None:
-    if not _SAFE_AGENT_ID_RE.match(agent_id) or not _SAFE_DATE_RE.match(date):
+    if not _SAFE_AGENT_ID_RE.fullmatch(agent_id) or not _SAFE_DATE_RE.fullmatch(date):
         raise HTTPException(status_code=400, detail="Invalid summary identifier")
 
 
@@ -490,8 +490,7 @@ async def read_daily_summary(agent_id: str | None = None, date: str | None = Non
 async def generate_daily_summary(body: dict | None = None):
     """
     Trigger an on-demand daily summary for the active agent.
-    Expects (optional): {"agent_id": "...", "date": "YYYY-MM-DD",
-                         "output_path": "..."}
+    Expects (optional): {"agent_id": "...", "date": "YYYY-MM-DD"}
     """
     from datetime import datetime as dt
 
@@ -503,7 +502,6 @@ async def generate_daily_summary(body: dict | None = None):
             raise HTTPException(status_code=400, detail="No active agent")
         agent_id = aid
     date = body.get("date") or dt.now().strftime("%Y-%m-%d")
-    output_path = body.get("output_path")
     _validate_summary_key(str(agent_id), str(date))
 
     client = _build_ui_direct_client()
@@ -512,7 +510,7 @@ async def generate_daily_summary(body: dict | None = None):
 
     try:
         result = client.generate_daily_summary(
-            agent_id=str(agent_id), date=str(date), output_path=output_path
+            agent_id=str(agent_id), date=str(date), output_path=None
         )
         return {"agent_id": agent_id, "date": date, **result}
     except Exception as e:
