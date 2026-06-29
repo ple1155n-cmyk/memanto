@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import tempfile
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,6 +11,8 @@ from httpx import ASGITransport, AsyncClient
 
 from memanto.app.config import settings
 from memanto.app.main import app
+from memanto.app.models.session import Session
+from memanto.app.routes.auth_deps import get_current_session
 
 # Set test environment
 os.environ["MOORCHEH_API_KEY"] = "test-api-key"
@@ -246,6 +249,106 @@ class TestMEMANTOAPI:
 
         assert response.status_code == 200
         assert response.json()["status"] == "queued"
+
+    @pytest.mark.asyncio
+    async def test_edit_memory_with_session(self, client, auth_headers):
+        """Test updating one memory with session token."""
+        app.dependency_overrides[get_current_session] = lambda: Session(
+            session_id="sess-test",
+            session_token="token-test",
+            agent_id=self.TEST_AGENT_ID,
+            namespace=f"memanto_agent_{self.TEST_AGENT_ID}",
+            started_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(hours=1),
+        )
+        try:
+            with patch("memanto.app.routes.memory.MemoryWriteService") as mock_cls:
+                write_service = mock_cls.return_value
+                write_service.update_memory.return_value = {
+                    "status": "success",
+                    "action": "updated",
+                    "updated_fields": ["title", "content"],
+                }
+
+                response = await client.patch(
+                    f"/api/v2/agents/{self.TEST_AGENT_ID}/memories/mem-123",
+                    headers=auth_headers,
+                    json={"title": "New title", "content": "New content"},
+                )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["action"] == "updated"
+        assert data["updated_fields"] == ["title", "content"]
+        write_service.update_memory.assert_called_once_with(
+            "mem-123",
+            f"memanto_agent_{self.TEST_AGENT_ID}",
+            {"title": "New title", "content": "New content"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_edit_memory_rejects_empty_update(self, client, auth_headers):
+        """Test update endpoint requires at least one field."""
+        app.dependency_overrides[get_current_session] = lambda: Session(
+            session_id="sess-test",
+            session_token="token-test",
+            agent_id=self.TEST_AGENT_ID,
+            namespace=f"memanto_agent_{self.TEST_AGENT_ID}",
+            started_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(hours=1),
+        )
+        try:
+            response = await client.patch(
+                f"/api/v2/agents/{self.TEST_AGENT_ID}/memories/mem-123",
+                headers=auth_headers,
+                json={},
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 400
+        assert "at least one field" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_edit_memory_returns_404_when_missing(self, client, auth_headers):
+        """Test that the edit endpoint returns 404 when the target memory does not exist.
+
+        CodeRabbit nitpick 2026-06-14T14:03:21Z on PR #633: the existing edit
+        tests cover success and empty payload but not the not-found mapping
+        behaviour. The route catches Exception and maps the substring
+        ``"not found"`` in the message to HTTP 404, so this test patches
+        ``MemoryWriteService.update_memory`` to raise an exception containing
+        that substring and asserts the response status is 404.
+        """
+        app.dependency_overrides[get_current_session] = lambda: Session(
+            session_id="sess-test",
+            session_token="token-test",
+            agent_id=self.TEST_AGENT_ID,
+            namespace=f"memanto_agent_{self.TEST_AGENT_ID}",
+            started_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(hours=1),
+        )
+        try:
+            with patch("memanto.app.routes.memory.MemoryWriteService") as mock_cls:
+                write_service = mock_cls.return_value
+                write_service.update_memory.side_effect = Exception(
+                    "memory mem-999 not found in namespace"
+                )
+
+                response = await client.patch(
+                    f"/api/v2/agents/{self.TEST_AGENT_ID}/memories/mem-999",
+                    headers=auth_headers,
+                    json={"content": "New content for missing memory"},
+                )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 404
+        detail = response.json()["detail"]
+        assert "mem-999" in detail
+        assert "not found" in detail.lower()
 
     @pytest.mark.asyncio
     async def test_answer_with_session(self, client, auth_headers, mock_moorcheh):
@@ -487,6 +590,42 @@ class TestMEMANTOAPI:
         data = response.json()
         assert "session_id" in data
         assert "ended_at" in data
+
+    @pytest.mark.asyncio
+    async def test_deactivated_session_token_cannot_write_memory(
+        self, client, auth_headers, mock_moorcheh
+    ):
+        """A token from a terminated session must not authorize memory writes."""
+        await client.post(
+            "/api/v2/agents",
+            headers=auth_headers,
+            json={"agent_id": self.TEST_AGENT_ID},
+        )
+        activate_resp = await client.post(
+            f"/api/v2/agents/{self.TEST_AGENT_ID}/activate", headers=auth_headers
+        )
+        token = activate_resp.json()["session_token"]
+        session_headers = {**auth_headers, "X-Session-Token": token}
+
+        deactivate_resp = await client.post(
+            f"/api/v2/agents/{self.TEST_AGENT_ID}/deactivate",
+            headers=session_headers,
+        )
+        assert deactivate_resp.status_code == 200
+
+        mock_moorcheh.documents.upload.return_value = {"status": "success"}
+        response = await client.post(
+            f"/api/v2/agents/{self.TEST_AGENT_ID}/remember",
+            headers=session_headers,
+            params={
+                "memory_type": "fact",
+                "title": "Should not store",
+            },
+            json={"content": "This token was terminated."},
+        )
+
+        assert response.status_code == 401
+        mock_moorcheh.documents.upload.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_global_status(self, client, auth_headers):
@@ -1070,6 +1209,7 @@ def _mock_ui_config_manager():
 
 
 class TestCWE200ApiKeyLeak:
+    TEST_AGENT_ID = "test-agent"
     """
     PoC test for CWE-200: API key leaked in plaintext via /api/ui/config endpoint.
     Verify that the raw API key is never returned (it is completely removed).
@@ -1104,6 +1244,7 @@ class TestCWE200ApiKeyLeak:
         # Session status field should be present (replaces sensitive session_token)
         assert "has_active_session" in data
         assert data["has_active_session"] is True
+
     @pytest.mark.asyncio
     async def test_traversal_filename_is_sanitized(
         self, client, auth_headers, mock_moorcheh
