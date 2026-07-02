@@ -127,10 +127,16 @@ class TestSessionService:
 
         assert Settings(_env_file=None).MEMANTO_SECRET_KEY == ""
 
-    def test_missing_session_secret_generates_unique_fallback(
+    def test_missing_session_secret_generates_persisted_fallback(
         self, temp_dir, monkeypatch
     ):
-        """Missing MEMANTO_SECRET_KEY should not reuse a predictable JWT secret."""
+        """Missing MEMANTO_SECRET_KEY should generate a random, persisted JWT secret.
+
+        The secret must survive process restarts (same data root -> same
+        secret, so existing session tokens keep validating) while still
+        differing across installs (different data roots -> different secrets,
+        so no single predictable secret is shared everywhere).
+        """
         monkeypatch.delenv("MEMANTO_SECRET_KEY", raising=False)
         monkeypatch.setattr(settings, "MEMANTO_SECRET_KEY", "")
 
@@ -138,9 +144,13 @@ class TestSessionService:
         second = SessionService(sessions_dir=temp_dir / "sessions-2")
 
         assert first.secret_key != "memanto-default-secret-change-in-production"
-        assert second.secret_key != "memanto-default-secret-change-in-production"
-        assert first.secret_key != second.secret_key
         assert len(first.secret_key) >= 32
+        assert first.secret_key == second.secret_key
+
+        other_root = SessionService(
+            sessions_dir=temp_dir / "other-install" / "sessions"
+        )
+        assert other_root.secret_key != first.secret_key
 
     def test_get_active_session_ignores_invalid_session_file(self, session_service):
         """A corrupt active session file should not crash status checks."""

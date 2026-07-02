@@ -61,18 +61,33 @@ class SessionService:
             secret_key: Secret key for JWT signing (defaults to env var or generated)
             sessions_dir: Directory for session storage (defaults to ~/.memanto/sessions/)
         """
+        self.sessions_dir = sessions_dir or get_data_dir() / "sessions"
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
         resolved_secret_key = (
             secret_key
             or settings.MEMANTO_SECRET_KEY
             or self._generate_secure_secret_key()
         )
         self.secret_key: str = resolved_secret_key
-        self.sessions_dir = sessions_dir or get_data_dir() / "sessions"
-        self.sessions_dir.mkdir(parents=True, exist_ok=True)
 
     def _generate_secure_secret_key(self) -> str:
-        """Generate a per-instance fallback secret for JWT signing."""
-        return secrets.token_hex(32)
+        """Generate (or reuse) a persisted fallback secret for JWT signing.
+
+        Persisted alongside the sessions directory so sessions survive
+        process restarts instead of every new process invalidating all
+        existing session tokens.
+        """
+        secret_file = self.sessions_dir.parent / "secret_key"
+        if secret_file.exists():
+            return secret_file.read_text().strip()
+
+        secret = secrets.token_hex(32)
+        secret_file.write_text(secret)
+        try:
+            secret_file.chmod(0o600)
+        except OSError:
+            pass  # Windows may not support chmod
+        return secret
 
     def _generate_namespace(self, agent_id: str) -> str:
         """
