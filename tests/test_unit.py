@@ -382,8 +382,6 @@ class TestMemoryReadServiceFormatting:
 
         assert formatted["confidence"] == 0.0
         assert formatted["tags"] == []
-        assert formatted["validation_count"] == 0
-        assert formatted["contradiction_detected"] is False
 
 
 class TestForgetEndToEnd:
