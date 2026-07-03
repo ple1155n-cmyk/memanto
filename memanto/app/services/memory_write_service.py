@@ -307,8 +307,11 @@ class MemoryWriteService:
                     updated_memory.expires_at = metadata["expires_at"]
 
             # Step 3: Delete old version
-            delete_result = self.client.documents.delete(
-                namespace_name=namespace, ids=[memory_id]
+            from typing import Any, cast
+
+            delete_result = cast(
+                dict[str, Any],
+                self.client.documents.delete(namespace_name=namespace, ids=[memory_id]),
             )
 
             if not self._deletion_succeeded(delete_result):
@@ -364,12 +367,3 @@ class MemoryWriteService:
         if isinstance(ids, list):
             return len(ids) > 0
         return str(result.get("status", "")).lower() in {"success", "ok"}
-
-    def _ensure_namespace(self, memory: MemoryRecord) -> str:
-        """Ensure namespace exists for memory"""
-        from typing import cast
-
-        namespace = self.namespace_service.create_namespace(
-            cast(Any, memory.scope_type), memory.scope_id
-        )
-        return cast(str, namespace)
