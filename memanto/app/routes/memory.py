@@ -41,22 +41,23 @@ from memanto.app.services.conversation_memory_extraction_service import (
 from memanto.app.services.memory_read_service import MemoryReadService
 from memanto.app.services.memory_write_service import MemoryWriteService
 from memanto.app.utils.errors import AuthorizationError, map_error_to_http_exception
-from memanto.app.utils.validation import CostGuard
+from memanto.app.utils.validation import CostGuard, validate_safe_id
 from memanto.cli.client.direct_client import DirectClient
 from memanto.cli.config.manager import ConfigManager
 
 router = APIRouter()
 
 _config_manager = ConfigManager()
-_SAFE_AGENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 _SAFE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _validate_summary_key(agent_id: str, date_str: str) -> None:
     """Reject identifiers that are unsafe for summary/conflict file paths."""
-    if not _SAFE_AGENT_ID_RE.fullmatch(agent_id) or not _SAFE_DATE_RE.fullmatch(
-        date_str
-    ):
+    if not _SAFE_DATE_RE.fullmatch(date_str):
+        raise HTTPException(status_code=400, detail="Invalid summary identifier")
+    try:
+        validate_safe_id(agent_id, "agent_id")
+    except ValueError:
         raise HTTPException(status_code=400, detail="Invalid summary identifier")
 
 

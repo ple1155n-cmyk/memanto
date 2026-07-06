@@ -7,6 +7,7 @@ Uses JWT tokens for stateless authentication.
 
 import json
 import logging
+import os
 import secrets
 from datetime import timedelta
 from pathlib import Path
@@ -75,19 +76,44 @@ class SessionService:
 
         Persisted alongside the sessions directory so sessions survive
         process restarts instead of every new process invalidating all
-        existing session tokens.
+        existing session tokens. Created atomically (O_CREAT | O_EXCL) with
+        restrictive permissions from the moment of creation, so concurrent
+        first-start processes can't race each other into using divergent
+        secrets and there's no window where the file is world-readable. An
+        existing-but-empty file (e.g. left behind by a crash mid-write) is
+        treated as absent and rewritten.
         """
         secret_file = self.sessions_dir.parent / "secret_key"
-        if secret_file.exists():
-            return secret_file.read_text().strip()
+        existing = self._read_persisted_secret(secret_file)
+        if existing is not None:
+            return existing
 
         secret = secrets.token_hex(32)
-        secret_file.write_text(secret)
+        try:
+            fd = os.open(str(secret_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            # Lost a race to another process, or the file is a stale empty stub.
+            existing = self._read_persisted_secret(secret_file)
+            if existing is not None:
+                return existing
+            fd = os.open(str(secret_file), os.O_WRONLY | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, secret.encode())
+        finally:
+            os.close(fd)
         try:
             secret_file.chmod(0o600)
         except OSError:
             pass  # Windows may not support chmod
         return secret
+
+    @staticmethod
+    def _read_persisted_secret(secret_file: Path) -> str | None:
+        """Read the persisted JWT secret, treating a missing/empty file as absent."""
+        if not secret_file.exists():
+            return None
+        content = secret_file.read_text().strip()
+        return content or None
 
     def _generate_namespace(self, agent_id: str) -> str:
         """

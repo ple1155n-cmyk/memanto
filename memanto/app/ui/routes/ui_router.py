@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from memanto.app.clients.backend import Backend
 from memanto.app.config import settings
+from memanto.app.utils.validation import validate_safe_id
 from memanto.cli.client.direct_client import DirectClient
 from memanto.cli.config.manager import ConfigManager
 from memanto.cli.connect.agent_registry import AGENT_REGISTRY, list_agents
@@ -30,13 +31,14 @@ _config_manager = ConfigManager()
 
 # Path to the static directory
 STATIC_DIR = Path(__file__).parent.parent / "static"
-_SAFE_AGENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 _SAFE_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _validate_agent_id(agent_id: str) -> None:
     """Reject agent identifiers that cannot be safely embedded in file paths."""
-    if not _SAFE_AGENT_ID_RE.fullmatch(agent_id):
+    try:
+        validate_safe_id(agent_id, "agent_id")
+    except ValueError:
         raise HTTPException(status_code=400, detail="Invalid agent identifier")
 
 
@@ -463,12 +465,6 @@ async def list_conflict_scans(
             return {"scans": {}, "agent_id": None}
         agent_id = aid
     _validate_agent_id(str(agent_id))
-
-    # Guard against glob-special characters that would leak cross-agent conflict data
-    if not re.match(r"^[A-Za-z0-9_-]+$", agent_id):
-        raise HTTPException(
-            status_code=400, detail="Invalid agent_id: must match [A-Za-z0-9_-]+"
-        )
 
     conflicts_dir = Path.home() / ".memanto" / "conflicts"
     scans: dict[str, dict] = {}

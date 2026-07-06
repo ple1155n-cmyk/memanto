@@ -12,10 +12,14 @@ Verifies that:
 import pytest
 
 
-# Use monkeypatch / fixtures so the env override doesn't bleed into other tests.
+# Patch the live settings singleton directly: memanto.app.config.settings is
+# instantiated once at import time (during test collection), so
+# monkeypatch.setenv() here would never reach code that reads it.
 @pytest.fixture(autouse=True)
 def _set_api_key(monkeypatch):
-    monkeypatch.setenv("MOORCHEH_API_KEY", "test-api-key")
+    from memanto.app.config import settings
+
+    monkeypatch.setattr(settings, "MOORCHEH_API_KEY", "test-api-key")
 
 
 class TestCorsCredentialsDefault:

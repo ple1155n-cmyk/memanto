@@ -176,7 +176,9 @@ def validate_safe_id(value: str, field_name: str = "id") -> str:
     """
     if not value:
         raise ValueError(f"{field_name} must not be empty")
-    if not re.match(r"^[A-Za-z0-9_-]+$", value):
+    # fullmatch (not match+$) so a trailing newline can't sneak through: `$`
+    # matches before a final "\n" even without re.MULTILINE.
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", value):
         raise ValueError(
             f"{field_name} '{value}' contains invalid characters. "
             "Only letters, digits, hyphens, and underscores are allowed."
@@ -221,8 +223,8 @@ def validate_output_path(
         raise HTTPException(
             status_code=400,
             detail=(
-                f"output_path must be inside {safe_base}. "
-                "Absolute paths that escape the agent data directory are not allowed."
+                "output_path must be inside the agent data directory. "
+                "Absolute paths that escape it are not allowed."
             ),
         )
     return resolved
