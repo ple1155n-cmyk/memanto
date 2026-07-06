@@ -190,3 +190,14 @@ def test_fuzzy_fallback_does_not_fire_on_unrelated_text():
     parser.parse_memory(memory)
 
     assert memory.type == "fact"
+
+
+def test_ambiguity_guard_not_bypassed_by_common_verbs():
+    parser = MemoryParsingService()
+
+    memory = make_memory("The project uses Django and it is maintained, and we decded on Postgres")
+
+    parser.parse_memory(memory)
+
+    assert memory.type == "decision"
+
