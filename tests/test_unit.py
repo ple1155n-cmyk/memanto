@@ -589,19 +589,13 @@ class TestPaginationBoundary:
         )
         assert response is not None
 
-    def test_zero_offset_large_limit_within_bound(self):
-        mocked_items = [
-            {"id": f"id_{i}", "text": f"[FACT] Memory {i}", "metadata": {"memory_type": "fact"}}
-            for i in range(50)
-        ]
-        self.service.client.similarity_search.query.return_value = {
-            "results": mocked_items,
-            "execution_time": 0.0,
-        }
-        response = self.service.search_memories(
-            query="test", agent_id="test_agent", offset=0, limit=50
-        )
-        assert len(response["results"]) == 50
+    def test_boundary_exceeded_by_one_raises_validation_error(self):
+        from memanto.app.utils.errors import ValidationError
+        with pytest.raises(ValidationError):
+            self.service.search_memories(
+                query="test", agent_id="test_agent", offset=50, limit=51
+            )
+
 
 
 

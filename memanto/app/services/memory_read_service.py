@@ -80,7 +80,9 @@ class MemoryReadService:
         Uses Moorcheh's #key:value syntax for efficient server-side filtering
         and kiosk_mode for score-based filtering.
 
-        Supports pagination via limit/offset parameters.
+        Supports pagination via limit/offset parameters. Note that the sum of
+        offset and limit (offset + limit) cannot exceed 100 due to vector backend
+        limitations.
         """
         try:
             if offset + limit > MAX_BACKEND_RESULTS:
