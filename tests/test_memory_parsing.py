@@ -192,12 +192,39 @@ def test_fuzzy_fallback_does_not_fire_on_unrelated_text():
     assert memory.type == "fact"
 
 
-def test_ambiguity_guard_not_bypassed_by_common_verbs():
+def test_weak_aux_verb_with_typo_falls_back_to_fuzzy():
     parser = MemoryParsingService()
-
     memory = make_memory("The project uses Django and it is maintained, and we decded on Postgres")
-
     parser.parse_memory(memory)
-
     assert memory.type == "decision"
+
+
+def test_weak_aux_verb_without_is_falls_back_to_fuzzy():
+    parser = MemoryParsingService()
+    memory = make_memory("The project uses Django and it gets maintained, and we decded on Postgres")
+    parser.parse_memory(memory)
+    assert memory.type == "decision"
+
+
+def test_strong_declarative_pattern_still_classified_as_fact():
+    parser = MemoryParsingService()
+    memory = make_memory("The API endpoint is called /v1/search and it was enabled last week")
+    parser.parse_memory(memory)
+    assert memory.type == "fact"
+
+
+def test_bare_auxiliary_alone_no_longer_bypasses_guard():
+    parser = MemoryParsingService()
+    memory = make_memory("It is nice and we decded on the new plan")
+    parser.parse_memory(memory)
+    assert memory.type == "decision"
+
+
+def test_url_or_high_confidence_fact_pattern_unaffected():
+    parser = MemoryParsingService()
+    memory = make_memory("The database port is 5432")
+    parser.parse_memory(memory)
+    assert memory.type == "fact"
+
+
 
