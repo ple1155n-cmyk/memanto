@@ -15,6 +15,9 @@ from memanto.app.core import agent_namespace
 from memanto.app.utils.errors import MemoryError, ValidationError
 
 
+MAX_BACKEND_RESULTS = 100
+
+
 class MemoryReadService:
     def __init__(self, moorcheh_client: "MoorchehClient"):
         self.client = moorcheh_client
@@ -80,10 +83,11 @@ class MemoryReadService:
         Supports pagination via limit/offset parameters.
         """
         try:
-            if offset + limit > 100:
+            if offset + limit > MAX_BACKEND_RESULTS:
                 raise ValidationError(
-                    f"Pagination boundary exceeded: offset + limit ({offset} + {limit} = {offset + limit}) cannot exceed 100. "
-                    "Moorcheh vector similarity search is limited to top 100 matching results."
+                    f"Pagination request (offset={offset}, limit={limit}) exceeds the "
+                    f"maximum supported result window of {MAX_BACKEND_RESULTS}. "
+                    f"The backend cannot retrieve results beyond this boundary."
                 )
 
             # Determine namespaces to search
@@ -107,7 +111,7 @@ class MemoryReadService:
             # Build query parameters
             # Request extra results to handle offset (Moorcheh doesn't have native offset support)
             requested_limit = limit + offset
-            top_k = min(requested_limit, 100)  # Moorcheh max is 100
+            top_k = min(requested_limit, MAX_BACKEND_RESULTS)
 
             # Perform search with server-side filtering.
             # Only enable kiosk_mode when the caller actually set a positive

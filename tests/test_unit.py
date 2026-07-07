@@ -546,17 +546,63 @@ def test_conflict_report_handles_non_object_json_items(tmp_path, monkeypatch):
     assert conflicts[0]["description"] == '["not an object", 1]'
 
 
-def test_search_memories_pagination_boundary_check():
-    from unittest.mock import MagicMock
-    import pytest
-    from memanto.app.services.memory_read_service import MemoryReadService
-    from memanto.app.utils.errors import ValidationError
+class TestPaginationBoundary:
 
-    service = MemoryReadService(MagicMock())
-    with pytest.raises(ValidationError) as exc_info:
-        service.search_memories(query="test", offset=90, limit=20)
+    def setup_method(self):
+        from unittest.mock import MagicMock
+        from memanto.app.services.memory_read_service import MemoryReadService
+        self.service = MemoryReadService(MagicMock())
+        self.service._get_search_namespaces = lambda agent_id: ["memanto_agent_test_agent"]
 
-    assert "Pagination boundary exceeded" in str(exc_info.value)
+    def test_offset_plus_limit_within_bound_succeeds(self):
+        mocked_items = [
+            {"id": f"id_{i}", "text": f"[FACT] Memory {i}", "metadata": {"memory_type": "fact"}}
+            for i in range(100)
+        ]
+        self.service.client.similarity_search.query.return_value = {
+            "results": mocked_items,
+            "execution_time": 0.0,
+        }
+        response = self.service.search_memories(
+            query="test", agent_id="test_agent", offset=90, limit=10
+        )
+        assert len(response["results"]) == 10
+
+    def test_offset_plus_limit_exceeds_bound_raises_validation_error(self):
+        from memanto.app.utils.errors import ValidationError
+        with pytest.raises(ValidationError):
+            self.service.search_memories(
+                query="test", agent_id="test_agent", offset=100, limit=10
+            )
+
+    def test_offset_plus_limit_exactly_at_bound_succeeds(self):
+        mocked_items = [
+            {"id": f"id_{i}", "text": f"[FACT] Memory {i}", "metadata": {"memory_type": "fact"}}
+            for i in range(100)
+        ]
+        self.service.client.similarity_search.query.return_value = {
+            "results": mocked_items,
+            "execution_time": 0.0,
+        }
+        response = self.service.search_memories(
+            query="test", agent_id="test_agent", offset=90, limit=10
+        )
+        assert response is not None
+
+    def test_zero_offset_large_limit_within_bound(self):
+        mocked_items = [
+            {"id": f"id_{i}", "text": f"[FACT] Memory {i}", "metadata": {"memory_type": "fact"}}
+            for i in range(50)
+        ]
+        self.service.client.similarity_search.query.return_value = {
+            "results": mocked_items,
+            "execution_time": 0.0,
+        }
+        response = self.service.search_memories(
+            query="test", agent_id="test_agent", offset=0, limit=50
+        )
+        assert len(response["results"]) == 50
+
 
 
 class TestValidateSafeId:
