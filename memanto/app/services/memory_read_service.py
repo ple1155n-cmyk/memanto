@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 from memanto.app.clients.backend import get_active_llm_model
 from memanto.app.config import settings
 from memanto.app.core import agent_namespace
-from memanto.app.utils.errors import MemoryError
+from memanto.app.utils.errors import MemoryError, ValidationError
 
 
 class MemoryReadService:
@@ -80,6 +80,12 @@ class MemoryReadService:
         Supports pagination via limit/offset parameters.
         """
         try:
+            if offset + limit > 100:
+                raise ValidationError(
+                    f"Pagination boundary exceeded: offset + limit ({offset} + {limit} = {offset + limit}) cannot exceed 100. "
+                    "Moorcheh vector similarity search is limited to top 100 matching results."
+                )
+
             # Determine namespaces to search
             namespaces = self._get_search_namespaces(agent_id)
 
@@ -148,6 +154,8 @@ class MemoryReadService:
                 "execution_time": search_result.get("execution_time", 0),
             }
 
+        except ValidationError:
+            raise
         except Exception as e:
             raise MemoryError(f"Failed to search memories: {e}")
 

@@ -450,5 +450,19 @@ def test_conflict_report_handles_non_object_json_items(tmp_path, monkeypatch):
     assert conflicts[0]["description"] == '["not an object", 1]'
 
 
+def test_search_memories_pagination_boundary_check():
+    from unittest.mock import MagicMock
+    import pytest
+    from memanto.app.services.memory_read_service import MemoryReadService
+    from memanto.app.utils.errors import ValidationError
+
+    service = MemoryReadService(MagicMock())
+    with pytest.raises(ValidationError) as exc_info:
+        service.search_memories(query="test", offset=90, limit=20)
+
+    assert "Pagination boundary exceeded" in str(exc_info.value)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
+
